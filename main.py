@@ -184,7 +184,7 @@ async def on_message(message):
 
         # Sends DM response in verification channel as embed with random color
         await verification_channel.send(embed=discord.Embed(
-            title=f"{message.author.mention} appears",
+            title=f"{message.author.name} appears",
             color=random.randint(1, 16777215),
             description=message.content
         ), view=Buttons(message=message))
