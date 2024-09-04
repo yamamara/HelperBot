@@ -13,12 +13,14 @@ from dotenv import load_dotenv
 # Loads environment variables from detected ".env"
 load_dotenv()
 
-guild_id = os.getenv("GUILD_ID")
+guild_id = int(os.getenv("GUILD_ID"))
 bot = commands.Bot("!", intents=discord.Intents.all())
 verification_channel_id = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 leaderboard_channel_id = int(os.getenv("LEADERBOARD_CHANNEL_ID"))
+roles_channel_id = int(os.getenv("ROLES_CHANNEL_ID"))
 unverified_role_id = int(os.getenv("UNVERIFIED_ROLE_ID"))
 secret_words = []
+role_ids = {}
 
 
 # Custom "Buttons" class that executes code on click instead of only URL
@@ -138,9 +140,9 @@ async def ping(interaction):
         f"{os.getenv('PING_MESSAGE')}\n```Latency: {round(bot.latency * 1000)}ms```")
 
 
+# Adds user and count data from leaderboard into embed and sends it
 @bot.tree.command(name="leaderboard", description="Prints the current leaderboard", guild=discord.Object(id=guild_id))
 async def leaderboard(interaction):
-    # Adds user and count data from leaderboard into embed
     await interaction.response.send_message(embed=get_leaderboard_embed(get_leaderboard_string()))
 
 
@@ -167,6 +169,38 @@ async def on_member_join(member):
     dm = await member.create_dm()
     await dm.send(os.getenv("WELCOME_MESSAGE_1"))
     await dm.send(os.getenv("WELCOME_MESSAGE_2"))
+
+
+@bot.event
+async def on_reaction_add(reaction, user):
+    roles_channel = bot.get_channel(roles_channel_id)
+
+    # Only executes if reaction is from real user in roles channel
+    if user == bot.user or reaction.message.channel.id != roles_channel.id:
+        return
+
+    # Iterates over color_role_ids dictionary and checks whether reacted emoji is in value list
+    for role_id in role_ids:
+        if reaction.emoji == role_ids[role_id]:
+            # Adds role to user using role ID in key corresponding to value
+            color_role = bot.get_guild(guild_id).get_role(role_id)
+            await user.add_roles(color_role)
+
+
+@bot.event
+async def on_reaction_remove(reaction, user):
+    roles_channel = bot.get_channel(roles_channel_id)
+
+    # Only executes if reaction is from real user in roles channel
+    if user == bot.user or reaction.message.channel.id != roles_channel.id:
+        return
+
+    # Iterates over color_role_ids dictionary and checks whether reacted emoji is in value list
+    for role_id in role_ids:
+        if reaction.emoji == role_ids[role_id]:
+            # Adds role to user using role ID in key corresponding to value
+            color_role = bot.get_guild(guild_id).get_role(role_id)
+            await user.remove_roles(color_role)
 
 
 # Runs on every message sent in any channel
@@ -203,6 +237,24 @@ async def on_message(message):
                 await message.channel.send("Printed rules to rules channel!")
             else:
                 await message.channel.send(os.getenv("PERMISSION_MESSAGE"))
+        elif message.content == "owner print roles":
+            if is_owner(message.author):
+                roles_channel = bot.get_channel(roles_channel_id)
+                description = ""
+
+                for role_id in role_ids:
+                    description += f"<@&{role_id}>\n"
+
+                role_message = await roles_channel.send(
+                    embed=discord.Embed(title=os.getenv("ROLES_TITLE"), color=0x7851A9, description=description)
+                )
+
+                for role_id in role_ids:
+                    await role_message.add_reaction(role_ids[role_id])
+
+                await message.channel.send("Printed role selection to roles channel!")
+            else:
+                await message.channel.send(os.getenv("PERMISSION_MESSAGE"))
 
         # Only checks for secret word in server not DMs
         for word in secret_words:
@@ -227,6 +279,14 @@ with open("words.json", "r") as infile:
             .replace("'", "", 2)
             .replace("b", "")
         )
+
+# Deserializes and appends int keys from "roles.json" to role ID list
+with open("roles.json", "r") as infile:
+    color_role_ids = json.load(infile)
+
+    # Takes all keys from deserialized dictionary and converts them to int in new dictionary
+    for color_role_id in color_role_ids:
+        role_ids[int(color_role_id)] = color_role_ids[color_role_id]
 
 # Serializes leaderboard on exit or kill
 atexit.register(serialize_leaderboard)
